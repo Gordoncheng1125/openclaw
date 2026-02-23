@@ -313,6 +313,17 @@ export async function ensureAgentWorkspace(params?: {
   const heartbeatPath = path.join(dir, DEFAULT_HEARTBEAT_FILENAME);
   const bootstrapPath = path.join(dir, DEFAULT_BOOTSTRAP_FILENAME);
   const statePath = resolveWorkspaceStatePath(dir);
+  const ensureWorkspaceFile = async (
+    filePath: string,
+    templateName: WorkspaceBootstrapFileName,
+  ): Promise<string | null> => {
+    if (await fileExists(filePath)) {
+      return null;
+    }
+    const template = await loadTemplate(templateName);
+    await writeFileIfMissing(filePath, template);
+    return template;
+  };
 
   const isBrandNewWorkspace = await (async () => {
     const paths = [agentsPath, soulPath, toolsPath, identityPath, userPath, heartbeatPath];
@@ -329,18 +340,12 @@ export async function ensureAgentWorkspace(params?: {
     return existing.every((v) => !v);
   })();
 
-  const agentsTemplate = await loadTemplate(DEFAULT_AGENTS_FILENAME);
-  const soulTemplate = await loadTemplate(DEFAULT_SOUL_FILENAME);
-  const toolsTemplate = await loadTemplate(DEFAULT_TOOLS_FILENAME);
-  const identityTemplate = await loadTemplate(DEFAULT_IDENTITY_FILENAME);
-  const userTemplate = await loadTemplate(DEFAULT_USER_FILENAME);
-  const heartbeatTemplate = await loadTemplate(DEFAULT_HEARTBEAT_FILENAME);
-  await writeFileIfMissing(agentsPath, agentsTemplate);
-  await writeFileIfMissing(soulPath, soulTemplate);
-  await writeFileIfMissing(toolsPath, toolsTemplate);
-  await writeFileIfMissing(identityPath, identityTemplate);
-  await writeFileIfMissing(userPath, userTemplate);
-  await writeFileIfMissing(heartbeatPath, heartbeatTemplate);
+  const identityTemplate = await ensureWorkspaceFile(identityPath, DEFAULT_IDENTITY_FILENAME);
+  const userTemplate = await ensureWorkspaceFile(userPath, DEFAULT_USER_FILENAME);
+  await ensureWorkspaceFile(agentsPath, DEFAULT_AGENTS_FILENAME);
+  await ensureWorkspaceFile(soulPath, DEFAULT_SOUL_FILENAME);
+  await ensureWorkspaceFile(toolsPath, DEFAULT_TOOLS_FILENAME);
+  await ensureWorkspaceFile(heartbeatPath, DEFAULT_HEARTBEAT_FILENAME);
 
   let state = await readWorkspaceOnboardingState(statePath);
   let stateDirty = false;
@@ -362,12 +367,15 @@ export async function ensureAgentWorkspace(params?: {
   if (!state.bootstrapSeededAt && !state.onboardingCompletedAt && !bootstrapExists) {
     // Legacy migration path: if USER/IDENTITY diverged from templates, treat onboarding as complete
     // and avoid recreating BOOTSTRAP for already-onboarded workspaces.
-    const [identityContent, userContent] = await Promise.all([
+    const [identityContent, userContent, identityTemplateContent, userTemplateContent] =
+      await Promise.all([
       fs.readFile(identityPath, "utf-8"),
       fs.readFile(userPath, "utf-8"),
+      identityTemplate ?? loadTemplate(DEFAULT_IDENTITY_FILENAME),
+      userTemplate ?? loadTemplate(DEFAULT_USER_FILENAME),
     ]);
     const legacyOnboardingCompleted =
-      identityContent !== identityTemplate || userContent !== userTemplate;
+      identityContent !== identityTemplateContent || userContent !== userTemplateContent;
     if (legacyOnboardingCompleted) {
       markState({ onboardingCompletedAt: nowIso() });
     } else {

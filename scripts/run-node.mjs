@@ -74,7 +74,12 @@ const runGit = (gitArgs, deps) => {
       cwd: deps.cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+      killSignal: "SIGKILL",
     });
+    if (result.error) {
+      return null;
+    }
     if (result.status !== 0) {
       return null;
     }
@@ -221,7 +226,7 @@ export async function runNodeMain(params = {}) {
   };
 
   deps.distRoot = path.join(deps.cwd, "dist");
-  deps.distEntry = path.join(deps.distRoot, "/entry.js");
+  deps.distEntry = path.join(deps.distRoot, "entry.js");
   deps.buildStampPath = path.join(deps.distRoot, ".buildstamp");
   deps.srcRoot = path.join(deps.cwd, "src");
   deps.configFiles = [path.join(deps.cwd, "tsconfig.json"), path.join(deps.cwd, "package.json")];
